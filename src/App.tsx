@@ -4,6 +4,7 @@ import { chatApi } from '@/lib/api';
 import { Message, Chat } from '@/lib/types';
 import { ConnectionTest } from '@/components/ConnectionTest';
 import { MultiMessageDemo } from '@/components/MultiMessageDemo';
+import { EndpointTester } from '@/components/EndpointTester';
 import './App.css';
 
 // WhatsApp-style Chat Interface with Backend Integration
@@ -106,14 +107,21 @@ const WhatsAppChat = ({ expertName, onBack }: { expertName: string; onBack: () =
 
   // Multi-message batch API (Recommended for WhatsApp-like experience)
   const sendMessageWithMultiResponse = async (messageText: string, agentId: string) => {
+    console.log('🚀 sendMessageWithMultiResponse called with:', { messageText, agentId, chatId: currentChat!.id });
+    
     try {
+      // Try the new multi-message endpoint first
       const response = await chatApi.sendMessageMulti(currentChat!.id, messageText, agentId);
+      
+      console.log('📡 Multi-message API response:', response);
       
       if (response.success && response.data.isMultiMessage) {
         console.log(`🎉 Received ${response.data.totalMessages} messages from Priya!`);
         
         // Display messages one by one with realistic delays
         for (let i = 0; i < response.data.messages.length; i++) {
+          console.log(`📝 Displaying message ${i + 1}/${response.data.totalMessages}:`, response.data.messages[i].content);
+          
           await displayMessageWithTyping(response.data.messages[i], {
             isFirst: i === 0,
             isAdditional: i > 0,
@@ -123,18 +131,79 @@ const WhatsAppChat = ({ expertName, onBack }: { expertName: string; onBack: () =
           
           // Add delay between messages (except for the last one)
           if (i < response.data.messages.length - 1) {
+            console.log(`⏳ Waiting 1.5s before next message...`);
             await new Promise(resolve => setTimeout(resolve, 1500)); // 1.5 second delay
           }
         }
+        console.log('✅ All multi-messages displayed successfully!');
       } else {
+        console.log('📄 Single message response received');
         // Single message response
-        if (response.data.messages.length > 0) {
+        if (response.data.messages && response.data.messages.length > 0) {
           await displayMessageWithTyping(response.data.messages[0]);
+        } else {
+          console.warn('⚠️ No messages in response data');
         }
       }
     } catch (error) {
       console.error('❌ Error sending multi-message:', error);
-      // Fallback to regular message
+      console.log('🔄 Falling back to regular message endpoint...');
+      
+      // Enhanced fallback: try the old endpoint too
+      await sendMessageFallbackWithOldEndpoint(messageText, agentId);
+    }
+  };
+
+  // Enhanced fallback that tries the old endpoint with multi-message support
+  const sendMessageFallbackWithOldEndpoint = async (messageText: string, agentId: string) => {
+    try {
+      console.log('🔄 Trying old endpoint with multi-message support...');
+      
+      const response = await chatApi.sendMessage(currentChat!.id, messageText, agentId);
+      console.log('📡 Old endpoint response:', response);
+      
+      // Check if the old endpoint now returns multi-message data
+      if ((response as any).isMultiMessage && (response as any).messages) {
+        console.log(`🎉 Old endpoint returned ${(response as any).totalMessages} messages!`);
+        
+        // Display each message with delay
+        for (let i = 0; i < (response as any).messages.length; i++) {
+          const messageContent = (response as any).messages[i];
+          
+          // Show typing indicator between messages
+          if (i > 0) {
+            setIsSending(true);
+            await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1000));
+            setIsSending(false);
+          }
+          
+          // Create message object
+          const aiMessage: Message = {
+            id: `ai-old-${Date.now()}-${i}`,
+            chatId: currentChat!.id,
+            userId: 'ai',
+            agentId,
+            content: messageContent,
+            role: 'assistant',
+            timestamp: new Date(),
+                         isMultiMessage: (response as any).totalMessages > 1,
+             isFirst: i === 0,
+             isAdditional: i > 0,
+             messageIndex: i + 1,
+             totalMessages: (response as any).totalMessages
+          };
+          
+                     setMessages(prev => [...prev, aiMessage]);
+           console.log(`📝 Displayed message ${i + 1}/${(response as any).totalMessages}: ${messageContent}`);
+        }
+      } else {
+        // Regular single message from old endpoint
+        console.log('📄 Single message from old endpoint');
+        await sendMessageFallback(messageText, agentId);
+      }
+    } catch (oldEndpointError) {
+      console.error('❌ Old endpoint also failed:', oldEndpointError);
+      // Final fallback to demo mode
       await sendMessageFallback(messageText, agentId);
     }
   };
@@ -520,6 +589,7 @@ const AppContent = () => {
           </div>
         </div>
         <div className="grid gap-6">
+          <EndpointTester />
           <ConnectionTest />
           <MultiMessageDemo 
             onTestMessage={(message) => {

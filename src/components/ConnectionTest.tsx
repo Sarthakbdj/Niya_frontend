@@ -176,26 +176,54 @@ export const ConnectionTest = () => {
           </div>
         </div>
 
-        <div className="flex gap-2">
-          <Button 
-            onClick={() => {
-              setTestResults({});
-              runTest('health', testBackendConnection);
-              runTest('auth', testAuthEndpoint);
-              runTest('chat', testChatEndpoint);
-            }}
-            disabled={isLoading}
-          >
-            Run All Tests
-          </Button>
-          <Button 
-            variant="outline"
-            onClick={() => setTestResults({})}
-            disabled={isLoading}
-          >
-            Clear Results
-          </Button>
-        </div>
+                  <div className="flex gap-2 flex-wrap">
+            <Button 
+              onClick={() => {
+                setTestResults({});
+                runTest('health', testBackendConnection);
+                runTest('auth', testAuthEndpoint);
+                runTest('chat', testChatEndpoint);
+                runTest('multiMessage', testMultiMessage);
+              }}
+              disabled={isLoading}
+            >
+              Run All Tests
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={() => setTestResults({})}
+              disabled={isLoading}
+            >
+              Clear Results
+            </Button>
+            <Button 
+              variant="secondary"
+              onClick={() => {
+                console.log('=== MANUAL DEBUG TEST ===');
+                console.log('Current auth token:', localStorage.getItem('authToken'));
+                console.log('API Base URL:', import.meta.env.VITE_API_BASE_URL);
+                // Try direct API call
+                fetch(`${import.meta.env.VITE_API_BASE_URL}/chats/debug-chat/messages/multi`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('authToken') || 'demo-token'}`
+                  },
+                  body: JSON.stringify({
+                    content: 'Tell me about yourself',
+                    agentId: 'priya'
+                  })
+                }).then(r => r.json()).then(data => {
+                  console.log('🎯 Direct multi-message test result:', data);
+                }).catch(err => {
+                  console.error('❌ Direct test failed:', err);
+                });
+              }}
+              disabled={isLoading}
+            >
+              🔍 Debug Multi-Message
+            </Button>
+          </div>
       </CardContent>
     </Card>
   );
