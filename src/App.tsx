@@ -5,6 +5,7 @@ import { Message, Chat } from '@/lib/types';
 import { ConnectionTest } from '@/components/ConnectionTest';
 import { MultiMessageDemo } from '@/components/MultiMessageDemo';
 import { EndpointTester } from '@/components/EndpointTester';
+import { BackendMessageTester } from '@/components/BackendMessageTester';
 import './App.css';
 
 // WhatsApp-style Chat Interface with Backend Integration
@@ -208,36 +209,81 @@ const WhatsAppChat = ({ expertName, onBack }: { expertName: string; onBack: () =
     }
   };
 
-  // Fallback message sending (original logic)
+  // Enhanced fallback with multi-message detection
   const sendMessageFallback = async (messageText: string, agentId: string) => {
     // Try backend first, then fallback to demo
     if (!isDemoMode) {
       try {
+        console.log('🔄 Trying backend with enhanced multi-message detection...');
         console.log('Sending message to backend:', { chatId: currentChat!.id, message: messageText, agentId });
-        const response = await chatApi.sendMessage(currentChat!.id, messageText, agentId);
-        console.log('Backend response:', response);
         
-        // If backend responds with a message, add it
-        if (response && response.content) {
+        const response = await chatApi.sendMessage(currentChat!.id, messageText, agentId);
+        console.log('🔍 Enhanced backend response:', response);
+        
+        // Check if response is multi-message format
+        if (response && typeof response === 'object' && 'isMultiMessage' in response) {
+          const multiResponse = response as { isMultiMessage: boolean; messages: string[]; totalMessages: number; primaryMessage: Message };
+          console.log(`🎉 DETECTED MULTI-MESSAGE FROM BACKEND: ${multiResponse.totalMessages} messages!`);
+          
+          // Display each message with delays
+          for (let i = 0; i < multiResponse.messages.length; i++) {
+            const messageContent = multiResponse.messages[i];
+            
+            // Show typing indicator between messages
+            if (i > 0) {
+              console.log(`⏳ Showing typing indicator before message ${i + 1}...`);
+              setIsSending(true);
+              await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1000));
+              setIsSending(false);
+            }
+            
+            // Create message object
+            const aiMessage: Message = {
+              id: `ai-backend-${Date.now()}-${i}`,
+              chatId: currentChat!.id,
+              userId: 'ai',
+              agentId,
+              content: messageContent,
+              role: 'assistant',
+              timestamp: new Date(),
+                             isMultiMessage: multiResponse.totalMessages > 1,
+               isFirst: i === 0,
+               isAdditional: i > 0,
+               messageIndex: i + 1,
+               totalMessages: multiResponse.totalMessages
+            };
+            
+                         setMessages(prev => [...prev, aiMessage]);
+             console.log(`✅ Displayed backend message ${i + 1}/${multiResponse.totalMessages}: ${messageContent}`);
+          }
+          return; // Success with multi-message
+        }
+        
+        // Handle single message response
+        if (response && (response as Message).content) {
+          console.log('📄 Single message from backend');
+          const singleMessage = response as Message;
           const aiMessage: Message = {
-            id: response.id || `ai-${Date.now()}`,
+            id: singleMessage.id || `ai-${Date.now()}`,
             chatId: currentChat!.id,
             userId: 'ai',
             agentId,
-            content: response.content,
+            content: singleMessage.content,
             role: 'assistant',
-            timestamp: new Date(response.timestamp || Date.now())
+            timestamp: new Date(singleMessage.timestamp || Date.now())
           };
           setMessages(prev => [...prev, aiMessage]);
-          return; // Success, don't use fallback
+          return; // Success with single message
         }
+        
       } catch (apiError) {
-        console.error('Backend API failed, switching to demo mode:', apiError);
+        console.error('❌ Backend API failed, switching to demo mode:', apiError);
         setIsDemoMode(true);
       }
     }
     
     // Fallback to simulated AI response (always works)
+    console.log('🔄 Using demo mode fallback...');
     setTimeout(() => {
       const aiResponse = getPriyaResponse(messageText);
       const aiMessage: Message = {
@@ -589,6 +635,7 @@ const AppContent = () => {
           </div>
         </div>
         <div className="grid gap-6">
+          <BackendMessageTester />
           <EndpointTester />
           <ConnectionTest />
           <MultiMessageDemo 

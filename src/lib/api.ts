@@ -91,8 +91,13 @@ export const chatApi = {
     return result.data;
   },
 
-  // Send a message
-  sendMessage: async (chatId: string, content: string, agentId: string): Promise<Message> => {
+  // Send a message (Enhanced with multi-message detection)
+  sendMessage: async (chatId: string, content: string, agentId: string): Promise<Message | {
+    isMultiMessage: boolean;
+    messages: string[];
+    totalMessages: number;
+    primaryMessage: Message;
+  }> => {
     console.log('API sendMessage called:', { chatId, content, agentId, API_BASE_URL });
     const token = localStorage.getItem('authToken');
     
@@ -161,17 +166,65 @@ export const chatApi = {
     }
     
     const result = await response.json();
-    console.log('API Response:', result);
+    console.log('🔍 FRONTEND RECEIVED FROM BACKEND:', result);
     
-    // Handle different response formats
-    if (result.data) {
-      return result.data;
-    } else if (result.id || result.content) {
-      // Direct message format
-      return result;
-    } else {
-      throw new Error('Invalid response format');
+    // 🔍 Enhanced multi-message detection for backend responses
+    let isMultiMessage = false;
+    let messages: string[] = [];
+    let totalMessages = 1;
+    
+    // Check for different multi-message formats from backend
+    if (result.isMultiMessage || result.is_multi_message) {
+      isMultiMessage = true;
+      console.log('✅ Multi-message detected via isMultiMessage flag');
     }
+    
+    // Check for messages array (from Python bridge)
+    if (result.messages && Array.isArray(result.messages) && result.messages.length > 1) {
+      isMultiMessage = true;
+      messages = result.messages;
+      totalMessages = result.messages.length;
+      console.log(`✅ Multi-message detected: ${totalMessages} messages in array`);
+    }
+    
+    // Check nested data structure
+    if (result.data && result.data.messages && Array.isArray(result.data.messages) && result.data.messages.length > 1) {
+      isMultiMessage = true;
+      messages = result.data.messages.map((msg: any) => typeof msg === 'string' ? msg : msg.content);
+      totalMessages = result.data.messages.length;
+      console.log(`✅ Multi-message detected in data.messages: ${totalMessages} messages`);
+    }
+    
+    // Create primary message object
+    let primaryMessage: Message;
+    const primaryContent = result.data?.content || result.content || (messages.length > 0 ? messages[0] : 'No content');
+    
+    primaryMessage = {
+      id: result.data?.id || result.id || `msg-${Date.now()}`,
+      chatId,
+      userId: 'ai',
+      agentId,
+      content: primaryContent,
+      role: 'assistant',
+      timestamp: new Date(result.data?.timestamp || result.timestamp || Date.now())
+    };
+    
+    // If multi-message detected, return special format
+    if (isMultiMessage && messages.length > 1) {
+      console.log(`🎉 RETURNING MULTI-MESSAGE FORMAT: ${totalMessages} messages`);
+      console.log('📝 Messages:', messages);
+      
+      return {
+        isMultiMessage: true,
+        messages,
+        totalMessages,
+        primaryMessage
+      };
+    }
+    
+    // Single message format
+    console.log('📄 Returning single message format');
+    return primaryMessage;
   },
 
   // Get messages for a chat (with pagination)
