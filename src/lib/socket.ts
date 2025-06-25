@@ -86,7 +86,7 @@ class WebSocketService {
       }
 
       this.isConnecting = true;
-      const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:3001/ws';
+      const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:3002/ws';
       
       try {
         this.socket = new WebSocket(`${wsUrl}?token=${encodeURIComponent(token)}`);

@@ -9,6 +9,9 @@ export default defineConfig(({ mode }) => {
 
   return {
     server: {
+      port: 5173,
+      strictPort: true,
+      host: true,
       proxy: {
         '/api': {
           target: backendUrl,
@@ -17,7 +20,7 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
-      plugins: [
+    plugins: [
       react(),
       mode === 'development' &&
       componentTagger(),

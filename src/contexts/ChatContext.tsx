@@ -67,7 +67,9 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
       loadChats();
     } catch (error) {
       console.error('Failed to connect WebSocket:', error);
-      setError('Failed to establish real-time connection');
+      console.log('Falling back to REST API only');
+      setIsConnected(false);
+      setError(null); // Don't show error for WebSocket failures
       // Fallback to REST API
       loadChats();
     }
@@ -95,12 +97,18 @@ export const ChatProvider = ({ children }: ChatProviderProps) => {
     if (data.message) {
       setCurrentChat(prev => {
         if (prev && prev.chatId === data.chatId) {
+          // Check if message already exists to prevent duplicates
+          const existingMessage = prev.messages.find(msg => msg.id === data.message!.id);
+          if (existingMessage) {
+            return prev; // Don't add duplicate
+          }
+          
           // Replace temporary message if it exists
           const messages = prev.messages.map(msg => 
             msg.id === data.messageId ? data.message! : msg
           );
           
-          // Add new message if it doesn't exist
+          // Add new message if it doesn't exist after replacement
           if (!messages.find(msg => msg.id === data.message!.id)) {
             messages.push(data.message!);
           }

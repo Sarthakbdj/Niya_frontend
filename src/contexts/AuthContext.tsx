@@ -20,6 +20,7 @@ interface AuthProviderProps {
 export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Debug logging for user state changes
   useEffect(() => {
@@ -116,20 +117,22 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       
       // Get configuration from environment variables
       const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-      const redirectUri = import.meta.env.VITE_GOOGLE_REDIRECT_URI || window.location.origin;
+      const redirectUri = import.meta.env.VITE_GOOGLE_REDIRECT_URI || 'http://localhost:5173/';
       
-      if (!clientId || clientId === 'your-google-client-id') {
-        console.log('Google Client ID not configured, using demo login');
-        await demoLogin();
-        return;
+      if (!clientId) {
+        throw new Error('Google Client ID not configured');
       }
+      
+      console.log('Using redirect URI:', redirectUri);
       
       // Construct Google OAuth URL
       const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
         `client_id=${encodeURIComponent(clientId)}&` +
         `redirect_uri=${encodeURIComponent(redirectUri)}&` +
         `response_type=code&` +
-        `scope=${encodeURIComponent('openid email profile')}`;
+        `scope=${encodeURIComponent('openid email profile')}&` +
+        `access_type=offline&` +
+        `prompt=consent`;
       
       console.log('Redirecting to Google OAuth:', googleAuthUrl);
       
@@ -138,15 +141,15 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       
     } catch (error) {
       console.error('Login failed:', error);
-      // Fallback to demo login if OAuth fails
-      await demoLogin();
+      setError('Google authentication failed. Please try again.');
+      throw error;
     } finally {
       setIsLoading(false);
     }
   };
 
   const demoLogin = async () => {
-    // Demo login for development
+    // Demo login for development - keeping this as fallback but not using by default
     const userData: User = {
       id: 'demo-user-' + Date.now(),
       email: 'demo@gurukul.ai',
@@ -156,8 +159,13 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       lastActive: new Date()
     };
     
+    // Create a demo auth token for API calls
+    const demoToken = `demo-token-${Date.now()}`;
+    
     setUser(userData);
     localStorage.setItem('gurukul-user', JSON.stringify(userData));
+    localStorage.setItem('authToken', demoToken);
+    console.log('Demo login successful:', userData);
   };
 
   const logout = async () => {
@@ -178,6 +186,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const value: AuthContextType = {
     user,
     isLoading,
+    error,
     login,
     logout
   };

@@ -1,6 +1,6 @@
 import { Message, Chat, ChatSession, ApiResponse } from './types';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002';
 
 class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -19,10 +19,19 @@ const handleResponse = async <T>(response: Response): Promise<T> => {
 
 const getAuthHeaders = (): HeadersInit => {
   const token = localStorage.getItem('authToken');
-  return {
+  console.log('Retrieved token:', token ? `${token.substring(0, 20)}...` : 'No token found');
+  
+  const headers: HeadersInit = {
     'Content-Type': 'application/json',
-    ...(token && { Authorization: `Bearer ${token}` }),
   };
+  
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  } else {
+    console.warn('No auth token found in localStorage');
+  }
+  
+  return headers;
 };
 
 export const chatApi = {
@@ -51,6 +60,25 @@ export const chatApi = {
 
   // Create a new chat
   createChat: async (agentId: string): Promise<Chat> => {
+    const token = localStorage.getItem('authToken');
+    
+    // Demo mode for development
+    if (token?.startsWith('demo-token-')) {
+      console.log('Demo mode: Creating demo chat for agent:', agentId);
+      const demoChat: Chat = {
+        id: `demo-chat-${Date.now()}`,
+        userId: 'demo-user',
+        agentId,
+        title: `Chat with ${agentId}`,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        messageCount: 0,
+        lastMessage: ''
+      };
+      return demoChat;
+    }
+
+    // Real API call
     const response = await fetch(`${API_BASE_URL}/chats`, {
       method: 'POST',
       headers: getAuthHeaders(),
@@ -65,16 +93,85 @@ export const chatApi = {
 
   // Send a message
   sendMessage: async (chatId: string, content: string, agentId: string): Promise<Message> => {
+    console.log('API sendMessage called:', { chatId, content, agentId, API_BASE_URL });
+    const token = localStorage.getItem('authToken');
+    
+    // Demo mode for development
+    if (token?.startsWith('demo-token-') || chatId?.startsWith('demo-chat-')) {
+      console.log('Demo mode: Simulating message send');
+      
+      // Simulate user message
+      const userMessage: Message = {
+        id: `demo-msg-${Date.now()}`,
+        chatId,
+        userId: 'demo-user',
+        agentId,
+        content,
+        role: 'user',
+        timestamp: new Date()
+      };
+      
+      // Simulate AI response after delay
+      setTimeout(() => {
+        const responses = [
+          "That's a great question! Let me help you with that.",
+          "I understand your concern. Here's what I think...",
+          "Thank you for sharing that with me. I appreciate your openness.",
+          "That's an interesting perspective. Let's explore this further.",
+          "I hear what you're saying. Let's work through this together."
+        ];
+        
+        const aiResponse: Message = {
+          id: `demo-ai-${Date.now()}`,
+          chatId,
+          userId: 'ai',
+          agentId,
+          content: responses[Math.floor(Math.random() * responses.length)],
+          role: 'assistant',
+          timestamp: new Date()
+        };
+        
+        // Dispatch a custom event to update the chat
+        window.dispatchEvent(new CustomEvent('demoMessage', { detail: aiResponse }));
+      }, 1000 + Math.random() * 2000); // Random delay 1-3 seconds
+      
+      return userMessage;
+    }
+
+    // Real API call
+    const headers = getAuthHeaders();
+    console.log('Request headers:', headers);
+    
+    const requestBody = { content, agentId };
+    console.log('Request body:', requestBody);
+    
     const response = await fetch(`${API_BASE_URL}/chats/${chatId}/messages`, {
       method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ content, agentId }),
+      headers,
+      body: JSON.stringify(requestBody),
     });
-    const result: ApiResponse<Message> = await handleResponse(response);
-    if (!result.data) {
-      throw new Error('Failed to send message');
+    
+    console.log('Response status:', response.status);
+    console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('API Error Response:', errorText);
+      throw new ApiError(response.status, errorText || `HTTP ${response.status}`);
     }
-    return result.data;
+    
+    const result = await response.json();
+    console.log('API Response:', result);
+    
+    // Handle different response formats
+    if (result.data) {
+      return result.data;
+    } else if (result.id || result.content) {
+      // Direct message format
+      return result;
+    } else {
+      throw new Error('Invalid response format');
+    }
   },
 
   // Get messages for a chat (with pagination)
