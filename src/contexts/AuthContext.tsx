@@ -65,7 +65,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       try {
         setIsLoading(true);
         
-        const apiUrl = `${import.meta.env.VITE_BACKEND_URL}auth/google/code`;
+        const apiUrl = `${import.meta.env.VITE_API_BASE_URL}/auth/google/code`;
         
         // Send the authorization code to backend
         const response = await fetch(apiUrl, {

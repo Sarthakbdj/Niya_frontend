@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { chatApi } from '@/lib/api';
 import { Message, Chat } from '@/lib/types';
+import { ConnectionTest } from '@/components/ConnectionTest';
 import './App.css';
 
 // WhatsApp-style Chat Interface with Backend Integration
@@ -369,6 +370,9 @@ const AppContent = () => {
   const { user, isLoading } = useAuth();
   const [selectedExpert, setSelectedExpert] = useState<string>('');
   
+  // Debug mode check
+  const isDebugMode = new URLSearchParams(window.location.search).get('debug') === 'true';
+  
   // Auto-select Priya when user logs in
   useEffect(() => {
     if (user && !selectedExpert) {
@@ -389,6 +393,33 @@ const AppContent = () => {
 
   if (!user) {
     return <LoginScreen onExpertSelect={setSelectedExpert} />;
+  }
+
+  // Debug mode shows connection test
+  if (isDebugMode) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-4">
+        <div className="mb-4 text-center">
+          <h1 className="text-2xl font-bold mb-2">🔧 Debug Mode</h1>
+          <p className="text-gray-600 mb-4">Testing frontend-to-backend connectivity</p>
+          <div className="flex gap-2 justify-center">
+            <button 
+              onClick={() => window.location.search = ''}
+              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+            >
+              Exit Debug Mode
+            </button>
+            <button 
+              onClick={() => setSelectedExpert('💕 Priya')}
+              className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+            >
+              Go to Chat
+            </button>
+          </div>
+        </div>
+        <ConnectionTest />
+      </div>
+    );
   }
 
   if (selectedExpert) {
