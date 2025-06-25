@@ -56,6 +56,15 @@ export const ConnectionTest = () => {
     return result;
   };
 
+  const testMultiMessage = async () => {
+    // Set up demo credentials
+    const demoToken = `demo-token-${Date.now()}`;
+    localStorage.setItem('authToken', demoToken);
+    
+    const result = await chatApi.sendMessageMulti('demo-chat-123', 'Tell me about yourself and what you enjoy doing', 'priya');
+    return result;
+  };
+
   const getStatus = (testName: string) => {
     const result = testResults[testName];
     if (!result) return 'pending';
@@ -141,6 +150,20 @@ export const ConnectionTest = () => {
                 disabled={isLoading}
               >
                 Test
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <span>🎉 Multi-Message Feature</span>
+            <div className="flex gap-2">
+              {getStatusBadge('multiMessage')}
+              <Button 
+                size="sm" 
+                onClick={() => runTest('multiMessage', testMultiMessage)}
+                disabled={isLoading}
+              >
+                Test Multi-Message
               </Button>
             </div>
           </div>

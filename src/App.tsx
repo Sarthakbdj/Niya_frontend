@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { chatApi } from '@/lib/api';
 import { Message, Chat } from '@/lib/types';
 import { ConnectionTest } from '@/components/ConnectionTest';
+import { MultiMessageDemo } from '@/components/MultiMessageDemo';
 import './App.css';
 
 // WhatsApp-style Chat Interface with Backend Integration
@@ -86,6 +87,103 @@ const WhatsAppChat = ({ expertName, onBack }: { expertName: string; onBack: () =
     }
   };
 
+  // Helper function to display messages with typing effect
+  const displayMessageWithTyping = async (message: Message, options: any = {}) => {
+    if (options.isFirst) {
+      setIsSending(true);
+    }
+    
+    // Simulate typing delay based on message length
+    const typingDelay = Math.min(message.content.length * 50, 3000); // Max 3 seconds
+    await new Promise(resolve => setTimeout(resolve, typingDelay));
+    
+    if (options.isFirst || !options.isAdditional) {
+      setIsSending(false);
+    }
+    
+    setMessages(prev => [...prev, message]);
+  };
+
+  // Multi-message batch API (Recommended for WhatsApp-like experience)
+  const sendMessageWithMultiResponse = async (messageText: string, agentId: string) => {
+    try {
+      const response = await chatApi.sendMessageMulti(currentChat!.id, messageText, agentId);
+      
+      if (response.success && response.data.isMultiMessage) {
+        console.log(`🎉 Received ${response.data.totalMessages} messages from Priya!`);
+        
+        // Display messages one by one with realistic delays
+        for (let i = 0; i < response.data.messages.length; i++) {
+          await displayMessageWithTyping(response.data.messages[i], {
+            isFirst: i === 0,
+            isAdditional: i > 0,
+            messageIndex: i + 1,
+            totalMessages: response.data.totalMessages
+          });
+          
+          // Add delay between messages (except for the last one)
+          if (i < response.data.messages.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 1500)); // 1.5 second delay
+          }
+        }
+      } else {
+        // Single message response
+        if (response.data.messages.length > 0) {
+          await displayMessageWithTyping(response.data.messages[0]);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error sending multi-message:', error);
+      // Fallback to regular message
+      await sendMessageFallback(messageText, agentId);
+    }
+  };
+
+  // Fallback message sending (original logic)
+  const sendMessageFallback = async (messageText: string, agentId: string) => {
+    // Try backend first, then fallback to demo
+    if (!isDemoMode) {
+      try {
+        console.log('Sending message to backend:', { chatId: currentChat!.id, message: messageText, agentId });
+        const response = await chatApi.sendMessage(currentChat!.id, messageText, agentId);
+        console.log('Backend response:', response);
+        
+        // If backend responds with a message, add it
+        if (response && response.content) {
+          const aiMessage: Message = {
+            id: response.id || `ai-${Date.now()}`,
+            chatId: currentChat!.id,
+            userId: 'ai',
+            agentId,
+            content: response.content,
+            role: 'assistant',
+            timestamp: new Date(response.timestamp || Date.now())
+          };
+          setMessages(prev => [...prev, aiMessage]);
+          return; // Success, don't use fallback
+        }
+      } catch (apiError) {
+        console.error('Backend API failed, switching to demo mode:', apiError);
+        setIsDemoMode(true);
+      }
+    }
+    
+    // Fallback to simulated AI response (always works)
+    setTimeout(() => {
+      const aiResponse = getPriyaResponse(messageText);
+      const aiMessage: Message = {
+        id: `ai-demo-${Date.now()}`,
+        chatId: currentChat!.id,
+        userId: 'ai',
+        agentId,
+        content: aiResponse,
+        role: 'assistant',
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, aiMessage]);
+    }, 1500 + Math.random() * 1500); // Random delay 1-3 seconds
+  };
+
   const sendMessage = async () => {
     if (!message.trim() || !currentChat || isSending) return;
 
@@ -107,47 +205,8 @@ const WhatsAppChat = ({ expertName, onBack }: { expertName: string; onBack: () =
       
       setMessages(prev => [...prev, userMessage]);
 
-      // Try backend first, then fallback to demo
-      if (!isDemoMode) {
-        try {
-          console.log('Sending message to backend:', { chatId: currentChat.id, message: messageText, agentId: getAgentId(expertName) });
-          const response = await chatApi.sendMessage(currentChat.id, messageText, getAgentId(expertName));
-          console.log('Backend response:', response);
-          
-          // If backend responds with a message, add it
-          if (response && response.content) {
-            const aiMessage: Message = {
-              id: response.id || `ai-${Date.now()}`,
-              chatId: currentChat.id,
-              userId: 'ai',
-              agentId: getAgentId(expertName),
-              content: response.content,
-              role: 'assistant',
-              timestamp: new Date(response.timestamp || Date.now())
-            };
-            setMessages(prev => [...prev, aiMessage]);
-            return; // Success, don't use fallback
-          }
-        } catch (apiError) {
-          console.error('Backend API failed, switching to demo mode:', apiError);
-          setIsDemoMode(true);
-        }
-      }
-      
-      // Fallback to simulated AI response (always works)
-      setTimeout(() => {
-        const aiResponse = getPriyaResponse(messageText);
-        const aiMessage: Message = {
-          id: `ai-demo-${Date.now()}`,
-          chatId: currentChat.id,
-          userId: 'ai',
-          agentId: getAgentId(expertName),
-          content: aiResponse,
-          role: 'assistant',
-          timestamp: new Date()
-        };
-        setMessages(prev => [...prev, aiMessage]);
-      }, 1500 + Math.random() * 1500); // 1.5-3 second delay
+      // Use multi-message API for WhatsApp-like experience
+      await sendMessageWithMultiResponse(messageText, getAgentId(expertName));
       
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -237,21 +296,64 @@ const WhatsAppChat = ({ expertName, onBack }: { expertName: string; onBack: () =
         {messages.map((msg) => (
           <div
             key={msg.id}
-            className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} ${
+              msg.isMultiMessage && msg.isAdditional ? 'mt-1' : 'mt-3'
+            }`}
           >
             <div
-              className={`max-w-sm lg:max-w-lg px-4 py-3 rounded-2xl ${
+              className={`max-w-sm lg:max-w-lg px-4 py-3 rounded-2xl relative ${
                 msg.role === 'user'
                   ? 'bg-green-500 text-white rounded-br-md shadow-md'
+                  : msg.isMultiMessage && msg.isAdditional
+                  ? 'bg-gray-50 text-gray-800 rounded-bl-md shadow-sm border border-gray-200'
                   : 'bg-white text-gray-800 rounded-bl-md shadow-md border border-gray-100'
               }`}
             >
+              {/* Multi-message indicator */}
+              {msg.isMultiMessage && (
+                <div className={`text-xs mb-2 flex items-center ${
+                  msg.role === 'user' ? 'text-green-100' : 'text-gray-500'
+                }`}>
+                  {msg.isFirst && (
+                    <>
+                      <span className="inline-block w-2 h-2 bg-pink-400 rounded-full mr-2"></span>
+                      <span>Message {msg.messageIndex}/{msg.totalMessages}</span>
+                    </>
+                  )}
+                  {msg.isAdditional && (
+                    <>
+                      <span className="inline-block w-1.5 h-1.5 bg-pink-300 rounded-full mr-2"></span>
+                      <span>{msg.messageIndex}/{msg.totalMessages}</span>
+                    </>
+                  )}
+                </div>
+              )}
+              
               <p className="text-sm leading-relaxed">{msg.content}</p>
-              <p className={`text-xs mt-2 ${
-                msg.role === 'user' ? 'text-green-100' : 'text-gray-500'
-              }`}>
-                {formatTime(msg.timestamp)}
-              </p>
+              
+              <div className="flex items-center justify-between mt-2">
+                <p className={`text-xs ${
+                  msg.role === 'user' ? 'text-green-100' : 'text-gray-500'
+                }`}>
+                  {formatTime(msg.timestamp)}
+                </p>
+                
+                {/* Multi-message chain indicator */}
+                {msg.isMultiMessage && msg.totalMessages && msg.totalMessages > 1 && (
+                  <div className="flex space-x-1">
+                    {Array.from({ length: msg.totalMessages }, (_, i) => (
+                      <div
+                        key={i}
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          i < (msg.messageIndex || 1)
+                            ? msg.role === 'user' ? 'bg-green-200' : 'bg-pink-400'
+                            : msg.role === 'user' ? 'bg-green-300' : 'bg-gray-300'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         ))}
@@ -417,7 +519,16 @@ const AppContent = () => {
             </button>
           </div>
         </div>
-        <ConnectionTest />
+        <div className="grid gap-6">
+          <ConnectionTest />
+          <MultiMessageDemo 
+            onTestMessage={(message) => {
+              // Create a temporary chat session for testing
+              console.log('🎯 Testing multi-message with:', message);
+              // You can implement a quick test here if needed
+            }}
+          />
+        </div>
       </div>
     );
   }

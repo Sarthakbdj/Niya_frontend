@@ -238,6 +238,174 @@ export const chatApi = {
     });
     await handleResponse(response);
   },
+
+  // Multi-message batch API (WhatsApp-style)
+  sendMessageMulti: async (chatId: string, content: string, agentId: string): Promise<{
+    success: boolean;
+    data: {
+      isMultiMessage: boolean;
+      totalMessages: number;
+      messages: Message[];
+    };
+  }> => {
+    const token = localStorage.getItem('authToken');
+    
+    // Demo mode for development
+    if (token?.startsWith('demo-token-') || chatId?.startsWith('demo-chat-')) {
+      console.log('Demo mode: Simulating multi-message send');
+      
+      // Simulate multiple AI responses
+      const demoResponses = [
+        "That's such an interesting question! I'm really glad you asked me that.",
+        "You know, I've been thinking about this topic a lot lately, and I have quite a few thoughts to share.",
+        "First, let me tell you what I find most fascinating about this...",
+        "And another thing that really excites me is how we can explore this together!",
+        "I hope this gives you some good insights to think about! 😊"
+      ];
+      
+      // Randomly choose 2-4 messages for demo
+      const numMessages = Math.floor(Math.random() * 3) + 2; // 2-4 messages
+      const selectedResponses = demoResponses.slice(0, numMessages);
+      
+      const messages: Message[] = selectedResponses.map((response, index) => ({
+        id: `demo-multi-${Date.now()}-${index}`,
+        chatId,
+        userId: 'ai',
+        agentId,
+        content: response,
+        role: 'assistant',
+        timestamp: new Date(Date.now() + index * 100), // Slight time offset
+        isMultiMessage: true,
+        isFirst: index === 0,
+        isAdditional: index > 0,
+        messageIndex: index + 1,
+        totalMessages: numMessages
+      } as Message));
+      
+      return {
+        success: true,
+        data: {
+          isMultiMessage: true,
+          totalMessages: numMessages,
+          messages
+        }
+      };
+    }
+
+    // Real API call
+    const response = await fetch(`${API_BASE_URL}/chats/${chatId}/messages/multi`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ content, agentId }),
+    });
+    
+    const result: {
+      success: boolean;
+      data: {
+        isMultiMessage: boolean;
+        totalMessages: number;
+        messages: Message[];
+      };
+    } = await handleResponse(response);
+    return result;
+  },
+
+  // Real-time streaming API
+  sendMessageStream: async (
+    chatId: string, 
+    content: string, 
+    agentId: string,
+    onMessage: (data: any) => void,
+    onComplete: () => void,
+    onError: (error: string) => void
+  ): Promise<void> => {
+    const token = localStorage.getItem('authToken');
+    
+    // Demo mode for development
+    if (token?.startsWith('demo-token-') || chatId?.startsWith('demo-chat-')) {
+      console.log('Demo mode: Simulating streaming');
+      
+      const demoMessages = [
+        "That's such a thoughtful question!",
+        "Let me share some ideas with you...",
+        "I think you'll find this perspective interesting.",
+        "Thanks for giving me the chance to explore this with you! 😊"
+      ];
+      
+      const numMessages = Math.floor(Math.random() * 3) + 2;
+      const messages = demoMessages.slice(0, numMessages);
+      
+      onMessage({ type: 'connected' });
+      
+      for (let i = 0; i < messages.length; i++) {
+        await new Promise(resolve => setTimeout(resolve, 1500 + Math.random() * 1000));
+        
+        onMessage({
+          type: 'message',
+          data: {
+            content: messages[i],
+            messageIndex: i + 1,
+            totalMessages: messages.length,
+            isFirst: i === 0,
+            isAdditional: i > 0
+          }
+        });
+      }
+      
+      onComplete();
+      return;
+    }
+
+    // Real streaming API call
+    try {
+      const response = await fetch(`${API_BASE_URL}/chats/${chatId}/messages/stream`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ content, agentId }),
+      });
+
+      if (!response.body) {
+        throw new Error('Streaming not supported');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              
+              if (data.type === 'connected') {
+                onMessage({ type: 'connected' });
+              } else if (data.type === 'message') {
+                onMessage({
+                  type: 'message',
+                  data: data.data
+                });
+              } else if (data.type === 'complete') {
+                onComplete();
+              } else if (data.type === 'error') {
+                onError(data.error);
+                return;
+              }
+            } catch (parseError) {
+              console.warn('Failed to parse stream data:', line);
+            }
+          }
+        }
+      }
+    } catch (error: any) {
+      onError(error.message);
+    }
+  },
 };
 
 export { ApiError }; 

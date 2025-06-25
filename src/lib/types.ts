@@ -16,6 +16,12 @@ export interface Message {
   role: 'user' | 'assistant';
   timestamp: Date;
   isTyping?: boolean;
+  // Multi-message support
+  isMultiMessage?: boolean;
+  isFirst?: boolean;
+  isAdditional?: boolean;
+  messageIndex?: number;
+  totalMessages?: number;
   metadata?: {
     messageIndex?: number;
     totalMessages?: number;
